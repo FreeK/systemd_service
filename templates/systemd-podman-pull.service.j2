@@ -1,0 +1,27 @@
+[Unit]
+Description={{ systemd_service.name }} %I
+After=podman.service
+Requires=podman.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=10m
+StartLimitInterval=720s
+StartLimitBurst=4
+SyslogIdentifier={{ systemd_service.name }}
+SyslogFacility=local5
+{% if systemd_service.podman.image is mapping %}
+Environment=IMAGE={{ systemd_service.podman.image.name }}
+Environment=IMAGE_TAG={{ systemd_service.podman.image.tag | default('latest_pull') }}
+{% else %}
+{% set image_parts = systemd_service.podman.image.split(':') %}
+Environment=IMAGE={{ image_parts[0] }}
+Environment=IMAGE_TAG={{ image_parts[1] | default('latest_pull') }}
+{% endif %}
+
+ExecStart={{ systemd_service.podman.podman_binary | default(systemd_service_defaults.podman.podman_binary) }} pull ${IMAGE}:%i
+ExecStart={{ systemd_service.podman.podman_binary | default(systemd_service_defaults.podman.podman_binary) }} tag ${IMAGE}:%i ${IMAGE}:${IMAGE_TAG}
+StandardOutput=journal
+
+[Install]
+WantedBy=multi-user.target

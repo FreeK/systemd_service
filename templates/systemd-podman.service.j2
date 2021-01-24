@@ -1,0 +1,135 @@
+[Unit]
+Description={{ systemd_service.name }}
+After=podman.service
+{% for after in systemd_service.after | default([]) %}
+After={{ after }}
+{% endfor %}
+{% for requires in systemd_service.requires | default([]) %}
+Requires={{ requires }}
+{% endfor %}
+
+[Service]
+TimeoutStartSec=10m
+Restart=on-failure
+RestartSec=10
+StartLimitInterval=720s
+StartLimitBurst=4
+SyslogIdentifier={{ systemd_service.name }}
+SyslogFacility=local5
+Environment=CONTAINER={{ systemd_service.podman.container_name | default(systemd_service.name) }}
+{% if systemd_service.podman.image is mapping %}
+Environment=IMAGE={{ systemd_service.podman.image.name }}
+Environment=IMAGE_TAG={{ systemd_service.podman.image.tag | default(systemd_service.podman.default_tag) }}
+{% else %}
+{% set image_parts = systemd_service.podman.image.split(':') %}
+Environment=IMAGE={{ image_parts[0] }}
+Environment=IMAGE_TAG={{ image_parts[1] | default(systemd_service.podman.default_tag) }}
+{% endif %}
+{% for item in systemd_service.podman.env | default({}) | dictsort %}
+PassEnvironment={{ item[0] }}
+{% endfor %}
+{% if (systemd_service.podman.pull | default(systemd_service_defaults.podman.pull) ) %}
+ExecStartPre=-{{ systemd_service.podman.podman_binary | default(systemd_service_defaults.podman.podman_binary) }} pull ${IMAGE}:${IMAGE_TAG}
+{% endif %}
+{% if not (systemd_service.podman.use_wrapper | default(systemd_service_defaults.podman.use_wrapper) ) %}
+ExecStartPre=-{{ systemd_service.podman.podman_binary | default(systemd_service_defaults.podman.podman_binary) }} stop -t 2 ${CONTAINER}
+ExecStartPre=-{{ systemd_service.podman.podman_binary | default(systemd_service_defaults.podman.podman_binary) }} kill ${CONTAINER}
+ExecStartPre=-{{ systemd_service.podman.podman_binary | default(systemd_service_defaults.podman.podman_binary) }} rm ${CONTAINER}
+{% endif %}
+{% if systemd_service.custom_pre_start is defined %}
+ExecStartPre=-{{ systemd_service.custom_pre_start }}
+{% endif %}
+{% if systemd_service.podman.use_wrapper | default(systemd_service_defaults.podman.use_wrapper)  %}
+ExecStart=/usr/bin/systemd-podman run --rm \
+{% else %}
+ExecStart={{ systemd_service.podman.podman_binary | default(systemd_service_defaults.podman.podman_binary) }} run --rm \
+{% endif %}
+{% for port in systemd_service.podman.expose_port | default([]) %}
+    -p {% if port.ip is defined %}{{ port.ip }}:{% endif %}{{ port.host }}:{{ port.container }} \
+{% endfor %}
+{% for port in systemd_service.podman.ports | default([]) %}
+    -p {{ port }} \
+{% endfor %}
+{% for volume in systemd_service.podman.volume | default([]) %}
+    -v "{{ volume.host }}:{{ volume.container }}{% if volume.mode is defined %}:{{ volume.mode }}{% endif %}" \
+{% endfor %}
+{% for volume in systemd_service.podman.volumes | default([]) %}
+    -v {{ volume }} \
+{% endfor %}
+{% for link in systemd_service.podman.link | default([]) %}
+{% if link is mapping %}
+    --link={{ link.container_name }}:{{ link.alias | default(link.container_name) }} \
+{% else %}
+    --link={{ link }} \
+{% endif %}
+{% endfor %}
+{% for item in systemd_service.podman.env | default({}) | dictsort %}
+    -e "{{ item[0] }}" \
+{% endfor %}
+{% if systemd_service.podman.memory_limit is defined %}
+    -m {{ systemd_service.podman.memory_limit }} \
+{% endif %}
+{% if systemd_service.podman.cpu_limit is defined %}
+    --cpus={{ systemd_service.podman.cpu_limit }} \
+{% endif %}
+{% for volume in systemd_service.podman.volumes_from | default([]) %}
+    --volumes-from={{ volume }} \
+{% endfor %}
+{% for label in systemd_service.podman.labels | default([]) %}
+    --label="{{label}}" \
+{% endfor %}
+{% if systemd_service.podman.network is defined %}
+    --network={{ systemd_service.podman.network }} \
+{% endif %}
+{% for network in systemd_service.podman.networks | default([]) %}
+{% if network is mapping %}
+    --network={{ network.name }} \
+{% else %}
+    --network={{ network }} \
+{% endif %}
+{% endfor %}
+{% if systemd_service.podman.ipv4 is defined %}
+    --ip="{{ systemd_service.podman.ipv4 }}" \
+{% endif %}
+{% if systemd_service.podman.ipv6 is defined %}
+    --ip6="{{ systemd_service.podman.ipv6 }}" \
+{% endif %}
+{% for host in systemd_service.podman.hosts | default([]) %}
+    --add-host="{{ host.hostname }}:{{ host.ip }}" \
+{% endfor %}
+{% if systemd_service.podman.entrypoint is defined %}
+    --entrypoint="{{ systemd_service.podman.entrypoint }}" \
+{% endif %}
+{% if systemd_service.podman.workdir is defined %}
+    -w="{{ systemd_service.podman.workdir }}" \
+{% endif %}
+{% if systemd_service.podman.user is defined %}
+    --user="{{ systemd_service.podman.user }}" \
+{% endif %}
+{% if systemd_service.podman.stopsignal is defined %}
+    --stop-signal={{ systemd_service.podman.stopsignal }} \
+{% endif %}
+{% if systemd_service.podman.hostname is defined %}
+    --hostname={{ systemd_service.podman.hostname }} \
+{% endif %}
+{% if systemd_service.podman.raw_args is defined %}
+    {{ systemd_service.podman.raw_args }} \
+{% endif %}
+{% for env_file in systemd_service.podman.env_file | default([]) %}
+    --env-file={{ env_file }} \
+{% endfor %}
+    --name ${CONTAINER} ${IMAGE}:${IMAGE_TAG} {% if systemd_service.podman.arguments is defined %}{{ systemd_service.podman.arguments }}{% endif %}
+
+{% if systemd_service.execstop is defined %}
+ExecStop=-{{ systemd_service.podman.podman_binary | default(systemd_service_defaults.podman.podman_binary) }} exec ${CONTAINER} {{ systemd_service.podman.execstop }}
+{% endif %}
+ExecStop={{ systemd_service.podman.podman_binary | default(systemd_service_defaults.podman.podman_binary) }} stop -t 2 ${CONTAINER}
+{% if systemd_service.exec_reload is defined %}
+ExecReload={{ systemd_service.exec_reload }}
+{% endif %}
+{% if systemd_service.podman.exec_reload is defined %}
+ExecReload={{ systemd_service.podman.podman_binary | default(systemd_service_defaults.podman.podman_binary) }} exec ${CONTAINER} {{ systemd_service.podman.exec_reload }}
+{% endif %}
+
+[Install]
+WantedBy=multi-user.target

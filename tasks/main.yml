@@ -7,11 +7,11 @@
 
 - name: creating systemd service
   include_tasks: common-service.yml
-  when: systemd_service.docker is not defined or systemd_service.docker.image is not defined
+  when: systemd_service.podman is not defined or systemd_service.podman.image is not defined
 
-- name: creating systemd docker service
-  include_tasks: docker-service.yml
-  when: systemd_service.docker is defined and systemd_service.docker.image is defined
+- name: creating systemd podman service
+  include_tasks: podman-service.yml
+  when: systemd_service.podman is defined and systemd_service.podman.image is defined
 
 - name: "Enabling and starting {{ systemd_service.name }}"
   systemd:
